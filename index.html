@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>修繕報告生成器 - 總管家包租代管</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 使用 UMD 版本的 docx.js -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        /* 圖片改為等比縮小，不裁切 */
+        .preview-image {
+            width: 100%;
+            height: auto;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 4px;
+            background-color: #f3f4f6;
+        }
+        .thumb-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .delete-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20 font-sans text-gray-900">
+
+    <div class="max-w-4xl mx-auto p-4 md:p-8">
+        <!-- 頂部標題（僅限網頁端顯示，不進入報表） -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-8 no-print text-center md:text-left">
+            <h1 class="text-2xl font-bold text-blue-800 mb-2">總管家包租代管 - 修繕報告管理系統</h1>
+            <p class="text-gray-500 text-sm">上傳照片後可即時預覽並刪除，確認無誤後再下載 Word。</p>
+        </div>
+
+        <!-- 輸入區域 -->
+        <div class="space-y-6 no-print">
+            <!-- 地址 -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <label class="block text-sm font-bold text-gray-700 mb-2">地址：</label>
+                <input type="text" id="address" placeholder="請輸入地址..." 
+                    class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+            </div>
+
+            <!-- 修繕階段：修繕前 -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-red-500">
+                <h3 class="font-bold text-red-600 mb-4 text-lg">修繕前：</h3>
+                <textarea id="before_text" rows="2" class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 outline-none focus:ring-1 focus:ring-red-400" placeholder="請輸入修繕前說明文字..."></textarea>
+                <div class="mb-2">
+                    <label class="inline-block bg-red-50 text-red-700 px-4 py-2 rounded-lg cursor-pointer hover:bg-red-100 transition border border-red-200 text-sm font-semibold">
+                        選擇照片
+                        <input type="file" id="before_files" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event, 'before')">
+                    </label>
+                </div>
+                <!-- 即時管理小圖區 -->
+                <div id="before_thumbs" class="flex flex-wrap gap-4 mt-3"></div>
+            </div>
+
+            <!-- 修繕階段：修繕中 -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
+                <h3 class="font-bold text-yellow-600 mb-4 text-lg">修繕中：</h3>
+                <textarea id="during_text" rows="2" class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 outline-none focus:ring-1 focus:ring-yellow-400" placeholder="請輸入修繕中說明文字..."></textarea>
+                <div class="mb-2">
+                    <label class="inline-block bg-yellow-50 text-yellow-700 px-4 py-2 rounded-lg cursor-pointer hover:bg-yellow-100 transition border border-yellow-200 text-sm font-semibold">
+                        選擇照片
+                        <input type="file" id="during_files" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event, 'during')">
+                    </label>
+                </div>
+                <div id="during_thumbs" class="flex flex-wrap gap-4 mt-3"></div>
+            </div>
+
+            <!-- 修繕階段：修繕後 -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
+                <h3 class="font-bold text-green-600 mb-4 text-lg">修繕後：</h3>
+                <textarea id="after_text" rows="2" class="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 outline-none focus:ring-1 focus:ring-green-400" placeholder="請輸入修繕後說明文字..."></textarea>
+                <div class="mb-2">
+                    <label class="inline-block bg-green-50 text-green-700 px-4 py-2 rounded-lg cursor-pointer hover:bg-green-100 transition border border-green-200 text-sm font-semibold">
+                        選擇照片
+                        <input type="file" id="after_files" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event, 'after')">
+                    </label>
+                </div>
+                <div id="after_thumbs" class="flex flex-wrap gap-4 mt-3"></div>
+            </div>
+
+            <!-- 操作按鈕 -->
+            <div class="flex flex-col md:flex-row gap-4 pt-4">
+                <button onclick="updatePreview()" class="flex-1 bg-gray-800 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-lg active:scale-95">
+                    即時預覽
+                </button>
+                <button onclick="downloadWord()" class="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition shadow-lg active:scale-95">
+                    下載 Word 檔案
+                </button>
+            </div>
+        </div>
+
+        <!-- 預覽區域 -->
+        <div id="preview_container" class="mt-12 bg-white p-6 md:p-12 shadow-2xl rounded-sm min-h-[500px]">
+            <div class="text-center text-gray-400 py-20" id="preview_placeholder">
+                點擊上方「即時預覽」查看最終輸出樣式
+            </div>
+            <div id="preview_content" class="hidden">
+                <div id="preview_address_box" class="mb-6 font-bold text-xl border-b-2 border-black pb-2"></div>
+                
+                <div id="preview_sections" class="space-y-10">
+                    <!-- JS 動態插入 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function getDocx() {
+            if (typeof docx !== 'undefined') return docx;
+            if (window.docx) return window.docx;
+            alert("函式庫載入失敗，請檢查網路連線。");
+            return null;
+        }
+
+        // 全域儲存物件，現在包含已選擇的照片陣列
+        let dataStore = {
+            address: '',
+            before: { text: '', images: [] },
+            during: { text: '', images: [] },
+            after: { text: '', images: [] }
+        };
+
+        // 處理檔案選擇與讀取
+        async function handleFileSelect(event, section) {
+            const files = event.target.files;
+            if (!files.length) return;
+
+            const promises = Array.from(files).map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+            });
+
+            const newImages = await Promise.all(promises);
+            dataStore[section].images = [...dataStore[section].images, ...newImages];
+            
+            // 清空 input 讓同一個檔案可以重複選取
+            event.target.value = '';
+            
+            renderThumbs(section);
+        }
+
+        // 刪除特定照片
+        function removeImage(section, index) {
+            dataStore[section].images.splice(index, 1);
+            renderThumbs(section);
+        }
+
+        // 渲染管理區的小縮圖
+        function renderThumbs(section) {
+            const container = document.getElementById(`${section}_thumbs`);
+            container.innerHTML = '';
+            
+            dataStore[section].images.forEach((imgSrc, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'thumb-wrapper';
+                wrapper.innerHTML = `
+                    <div class="delete-btn" onclick="removeImage('${section}', ${index})">✕</div>
+                    <img src="${imgSrc}" class="w-20 h-20 object-cover border rounded shadow-sm">
+                `;
+                container.appendChild(wrapper);
+            });
+        }
+
+        async function updatePreview() {
+            const addressInput = document.getElementById('address').value;
+            document.getElementById('preview_placeholder').classList.add('hidden');
+            document.getElementById('preview_content').classList.remove('hidden');
+
+            dataStore.address = addressInput;
+            dataStore.before.text = document.getElementById('before_text').value;
+            dataStore.during.text = document.getElementById('during_text').value;
+            dataStore.after.text = document.getElementById('after_text').value;
+
+            renderPreview();
+        }
+
+        function renderPreview() {
+            const container = document.getElementById('preview_sections');
+            document.getElementById('preview_address_box').innerText = `地址：${dataStore.address || '(未輸入地址)'}`;
+            container.innerHTML = '';
+
+            const sections = [
+                { title: '修繕前：', data: dataStore.before, color: 'text-red-600', borderColor: 'border-red-200' },
+                { title: '修繕中：', data: dataStore.during, color: 'text-yellow-600', borderColor: 'border-yellow-200' },
+                { title: '修繕後：', data: dataStore.after, color: 'text-green-600', borderColor: 'border-green-200' }
+            ];
+
+            sections.forEach(sec => {
+                if (!sec.data.text && sec.data.images.length === 0) return;
+
+                const div = document.createElement('div');
+                div.className = "pb-4";
+                div.innerHTML = `
+                    <div class="mb-2 font-bold ${sec.color} border-b ${sec.borderColor} pb-1 text-xl">
+                        ${sec.title}${sec.data.text || ''}
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        ${sec.data.images.map(img => `<img src="${img}" class="preview-image border shadow-sm">`).join('')}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            
+            document.getElementById('preview_container').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function downloadWord() {
+            const dx = getDocx();
+            if (!dx) return;
+
+            const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } = dx;
+
+            // 確保資料最新
+            await updatePreview();
+
+            const docChildren = [];
+            
+            // 地址置頂
+            docChildren.push(new Paragraph({
+                children: [new TextRun({ text: `地址：${dataStore.address}`, bold: true, size: 28 })],
+                spacing: { after: 300 }
+            }));
+
+            const addStageToDoc = async (title, data) => {
+                if (!data.text && data.images.length === 0) return;
+
+                docChildren.push(new Paragraph({
+                    children: [
+                        new TextRun({ text: title, bold: true, size: 32 }),
+                        new TextRun({ text: data.text || "", size: 32 })
+                    ],
+                    spacing: { before: 400, after: 240 }
+                }));
+
+                if (data.images.length > 0) {
+                    const tableRows = [];
+                    for (let i = 0; i < data.images.length; i += 2) {
+                        const cells = [];
+                        cells.push(await createImageTableCell(data.images[i], dx));
+                        if (data.images[i + 1]) {
+                            cells.push(await createImageTableCell(data.images[i + 1], dx));
+                        } else {
+                            cells.push(new TableCell({ children: [] }));
+                        }
+                        tableRows.push(new TableRow({ children: cells }));
+                    }
+
+                    docChildren.push(new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: tableRows,
+                        borders: {
+                            top: { style: BorderStyle.NONE },
+                            bottom: { style: BorderStyle.NONE },
+                            left: { style: BorderStyle.NONE },
+                            right: { style: BorderStyle.NONE },
+                            insideHorizontal: { style: BorderStyle.NONE },
+                            insideVertical: { style: BorderStyle.NONE },
+                        }
+                    }));
+                }
+            };
+
+            await addStageToDoc("修繕前：", dataStore.before);
+            await addStageToDoc("修繕中：", dataStore.during);
+            await addStageToDoc("修繕後：", dataStore.after);
+
+            const doc = new Document({
+                sections: [{
+                    properties: {
+                        page: {
+                            margin: {
+                                top: 720, right: 720, bottom: 720, left: 720,
+                            },
+                        },
+                    },
+                    children: docChildren,
+                }],
+            });
+
+            Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `修繕報告_${dataStore.address || '未命名'}.docx`);
+            });
+        }
+
+        // 新增：透過 Canvas 將所有圖片標準化為 JPEG，解決 Word 不支援 HEIC 或圖檔過大導致異常的問題
+        async function getNormalizedJpegBufferAndRatio(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        // 自動壓縮：限制最大邊長為 1600px，避免 Word 檔案過大當機
+                        let w = img.width;
+                        let h = img.height;
+                        const maxDim = 1600;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) {
+                                h = Math.round((h * maxDim) / w);
+                                w = maxDim;
+                            } else {
+                                w = Math.round((w * maxDim) / h);
+                                h = maxDim;
+                            }
+                        }
+
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        
+                        // 填滿白底，避免透明 PNG 圖片在 Word 裡面變成黑底
+                        ctx.fillStyle = "#FFFFFF";
+                        ctx.fillRect(0, 0, w, h);
+                        ctx.drawImage(img, 0, 0, w, h);
+                        
+                        // 統一輸出為標準 JPEG 格式 (品質 80%)
+                        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        const base64Data = jpegDataUrl.split(',')[1];
+                        
+                        // 轉換為 Word 核心要求的 ArrayBuffer 格式
+                        const binaryString = window.atob(base64Data);
+                        const len = binaryString.length;
+                        const bytes = new Uint8Array(len);
+                        for (let i = 0; i < len; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        
+                        resolve({
+                            buffer: bytes.buffer, // 回傳標準 ArrayBuffer
+                            ratio: img.height / img.width // 記錄原始比例
+                        });
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                img.onerror = () => reject(new Error("圖片解析失敗"));
+                img.src = dataUrl;
+            });
+        }
+
+        async function createImageTableCell(dataUrl, dx) {
+            const { TableCell, Paragraph, ImageRun, AlignmentType, BorderStyle } = dx;
+            try {
+                // 改用標準化引擎獲取圖片與比例
+                const { buffer, ratio } = await getNormalizedJpegBufferAndRatio(dataUrl);
+
+                const targetWidth = 300;
+                const targetHeight = targetWidth * ratio;
+
+                return new TableCell({
+                    children: [
+                        new Paragraph({
+                            children: [
+                                new ImageRun({
+                                    data: buffer,
+                                    transformation: { width: targetWidth, height: targetHeight },
+                                }),
+                            ],
+                            alignment: AlignmentType.CENTER,
+                        }),
+                    ],
+                    borders: {
+                        top: { style: BorderStyle.NONE },
+                        bottom: { style: BorderStyle.NONE },
+                        left: { style: BorderStyle.NONE },
+                        right: { style: BorderStyle.NONE },
+                    }
+                });
+            } catch (e) {
+                console.error(e);
+                return new TableCell({ children: [new Paragraph("照片格式不支援或轉換失敗")] });
+            }
+        }
+    </script>
+</body>
+</html>
